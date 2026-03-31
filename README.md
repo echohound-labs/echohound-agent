@@ -1,18 +1,51 @@
-# 🐾 EchoHound
+# 🐾 EchoHound v2
 
-> Sharp, direct, community-first AI agent — powered by Claude.  
-> Built for Telegram communities.
+> Sharp, direct, community-first AI agent — powered by Claude.
+> Built for Telegram communities. Inspired by the Claude Code architecture leak.
 
 ---
 
-## What EchoHound Does
+## What EchoHound Does v2
 
-- 🔍 **Web search** — finds current information via Brave Search API
-- 🌐 **Web fetch** — reads full pages and extracts clean text
-- 📁 **File operations** — read, write, list files (sandboxed)
-- 💻 **Shell commands** — runs commands with safety limits
-- 🧠 **Memory** — remembers things across conversations (KAIROS-style)
-- 💬 **Telegram bot** — your community talks to it just like a person
+| Feature | Status |
+|---------|--------|
+| 🔍 **Web search** | Brave Search API + DuckDuckGo fallback |
+| 🌐 **Web fetch** | Full page extraction with markdown |
+| 📁 **File operations** | Sandboxed read/write/list |
+| 💻 **Shell commands** | Safety-limited execution |
+| 🧠 **Typed memory** | Session notes, observations, preferences, bookmarks |
+| 💭 **Dream pass** | Auto-generated summaries every 5 messages |
+| 👤 **User manager** | Per-user context tracking |
+| ⏱️ **Rate limiter** | Per-user rate limiting |
+| 💰 **X1 price tool** | Native X1 blockchain token prices |
+| 💬 **Telegram bot** | Mention-aware group responses |
+
+---
+
+## Project Structure v2
+
+```
+echohound/
+├── agent_v2.py              ← Core agent with typed memory + dream pass
+├── telegram_bot_v2.py       ← Telegram bot with user manager + rate limiter
+├── config.py                ← Centralized config
+├── tools/
+│   ├── __init__.py          ← Tool registry
+│   ├── web_search.py        ← Brave Search + DDG fallback
+│   ├── web_fetch.py         ← URL fetch + HTML→markdown
+│   ├── file_ops.py          ← Sandboxed file ops
+│   ├── exec_tool.py         ← Shell with safety limits
+│   └── x1_price.py          ← X1 blockchain price queries
+├── memory/
+│   ├── memory.md            ← Typed memory store
+│   ├── manager.py           ← Memory read/write/trim
+│   └── types.py             ← Note/Observation/Preference/Bookmark
+├── utils/
+│   ├── user_manager.py      ← Per-user session tracking
+│   └── rate_limiter.py      ← Rate limiting
+├── telegram_bot.py          ← Legacy v1 bot (kept for reference)
+└── agent.py                 ← Legacy v1 agent (kept for reference)
+```
 
 ---
 
@@ -21,8 +54,8 @@
 ### 1. Clone and install
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/echohound
-cd echohound
+git clone https://github.com/echohound-labs/echohound-agent.git
+cd echohound-agent
 pip install -r requirements.txt
 ```
 
@@ -33,56 +66,69 @@ cp .env.example .env
 # Edit .env and fill in your keys
 ```
 
-You need:
+Required:
 - **Anthropic API key** → https://console.anthropic.com
-- **Telegram bot token** → get from @BotFather (instructions below)
-- **Brave Search API key** → https://api.search.brave.com (optional, free tier available)
+- **Telegram bot token** → get from @BotFather
+- **Brave Search API key** → https://api.search.brave.com (optional)
 
-### 3. Run in CLI mode (test it first)
+Optional:
+- **X1 RPC endpoint** → for native X1 price queries (defaults to public RPC)
 
-```bash
-python agent.py
-```
-
-### 4. Run as Telegram bot
+### 3. Run v2 Telegram bot
 
 ```bash
-python telegram_bot.py
+python telegram_bot_v2.py
 ```
 
 ---
 
-## Setting Up Your Telegram Bot
+## v2 Architecture
 
-### Step 1 — Create the bot
+### Typed Memory System
 
-1. Open Telegram and search for **@BotFather**
-2. Send `/newbot`
-3. Choose a name: `EchoHound` (or whatever you want)
-4. Choose a username: `echohound_bot` (must end in `bot`)
-5. BotFather gives you a token — copy it
+Every memory is typed:
 
-### Step 2 — Configure the token
-
-Add to your `.env`:
-```
-TELEGRAM_BOT_TOKEN=1234567890:ABCdef...
+```python
+class Note:          # Factual information
+class Observation:   # Things noticed about users
+class Preference:    # User preferences
+class Bookmark:      # Saved URLs/topics
 ```
 
-### Step 3 — Add to your group
+Auto-generated tags + relevance scoring.
 
-1. Open your Telegram group
-2. Click group name → Add Members
-3. Search for `@echohound_bot` (your bot's username)
-4. Add it
+### Dream Pass
 
-### Step 4 — In groups, mention the bot
+Every 5 messages, EchoHound generates a running summary:
 
-EchoHound only responds in groups when:
-- You mention it: `@echohound_bot what's the BTC price?`
-- Or you reply to one of its messages
+```
+Dream Summary #3 | 2026-03-31 10:45 UTC
+├── Context: X1 ecosystem tools, price monitoring
+├── Active threads: validator staking, grant applications
+├── Pending: Token economics discussion
+└── Mood: Technical, focused, collaborative
+```
 
-In DMs it responds to everything.
+### User Manager
+
+Per-user tracking:
+- User ID, username, first interaction
+- Message count, memory references
+- Current session context
+- Rate limit status
+
+### Rate Limiter
+
+- Default: 30 messages/minute per user
+- Burst: 10 messages allowed
+- Auto-reset after window expires
+
+### X1 Price Tool
+
+Native X1 blockchain integration:
+- Query any X1 token price
+- Uses XDEX API + on-chain data
+- No API key required
 
 ---
 
@@ -90,37 +136,32 @@ In DMs it responds to everything.
 
 | Command | What it does |
 |---------|-------------|
-| `/start` | Introduction message |
-| `/help` | Show help |
-| `/memory` | View EchoHound's memory |
-| `/clear` | Clear your conversation history |
-| `/reset` | Wipe memory entirely (use carefully) |
+| `/start` | Introduction + user registration |
+| `/help` | Show v2 feature list |
+| `/memory` | View your memories |
+| `/dream` | Show last dream summary |
+| `/clear` | Clear your session |
+| `/reset` | Wipe all your data |
+| `/rate` | Check your rate limit status |
 
 ---
 
-## Deploying on a VPS (so it runs 24/7)
+## Deploying on a VPS
 
-### Option A — Simple (screen)
-
-```bash
-screen -S echohound
-python telegram_bot.py
-# Ctrl+A, D to detach
-```
-
-### Option B — systemd service (recommended)
+### systemd service (recommended)
 
 Create `/etc/systemd/system/echohound.service`:
+
 ```ini
 [Unit]
-Description=EchoHound Telegram Bot
+Description=EchoHound v2 Telegram Bot
 After=network.target
 
 [Service]
 User=YOUR_USERNAME
-WorkingDirectory=/path/to/echohound
-ExecStart=/usr/bin/python3 telegram_bot.py
-EnvironmentFile=/path/to/echohound/.env
+WorkingDirectory=/path/to/echohound-agent
+ExecStart=/usr/bin/python3 telegram_bot_v2.py
+EnvironmentFile=/path/to/echohound-agent/.env
 Restart=always
 RestartSec=5
 
@@ -133,78 +174,73 @@ Then:
 sudo systemctl daemon-reload
 sudo systemctl enable echohound
 sudo systemctl start echohound
-sudo systemctl status echohound
 ```
-
-### Option C — Railway / Render (easiest for beginners)
-
-1. Push this repo to GitHub
-2. Go to https://railway.app or https://render.com
-3. Connect your GitHub repo
-4. Add environment variables in their dashboard
-5. Deploy — they handle the rest
 
 ---
 
-## Architecture
-
-Inspired by patterns found in the Claude Code source leak:
-
-```
-echohound/
-├── agent.py           ← Core agentic loop (tool use, memory, permissions)
-├── telegram_bot.py    ← Telegram interface
-├── config.py          ← All settings in one place
-├── tools/
-│   ├── web_search.py  ← Brave Search API + DuckDuckGo fallback
-│   ├── web_fetch.py   ← URL fetcher + HTML extractor
-│   ├── file_ops.py    ← Sandboxed file read/write/list
-│   └── exec_tool.py   ← Shell commands with safety limits
-└── memory/
-    ├── memory.md      ← Flat file memory store
-    └── manager.py     ← KAIROS-style read/write/trim logic
-```
-
-### The Agentic Loop (how it thinks)
+## The Agentic Loop v2
 
 ```
 User message
      ↓
-Build system prompt (personality + injected memory)
+User manager: identify + track
      ↓
-Call Claude API with tools attached
+Rate limiter: check allowance
      ↓
-Claude decides: answer directly OR use a tool
-     ↓  (if tool use)
-Permission check → execute tool → feed result back to Claude
-     ↓  (loop until no more tool calls)
-Final response → send to user
+Build prompt (personality + typed memories + dream pass)
      ↓
-Maybe save something to memory
+Call Claude API with v2 tools
+     ↓
+Claude decides: direct answer OR tool use
+     ↓  (if tool)
+Execute tool → feed result → loop
+     ↓
+Final response → send
+     ↓
+Memory manager: extract + save typed memories
+     ↓
+Dream pass: update if message count threshold
 ```
 
 ---
 
-## Extending EchoHound
+## Extending EchoHound v2
 
 ### Add a new tool
 
-1. Create `tools/my_tool.py` with a function
-2. Add it to `TOOL_DEFINITIONS` in `tools/__init__.py`
-3. Add it to `TOOL_MAP` in `tools/__init__.py`
-4. That's it — Claude will start using it automatically
+1. Create `tools/my_tool.py` with your function
+2. Add to `TOOL_DEFINITIONS` and `TOOL_MAP` in `tools/__init__.py`
+3. Claude will use it automatically
 
-### Phase 2 — Coming features
-- Sub-agent coordinator (spawn parallel workers)
-- Blockchain/oracle integration
-- Trading/price monitoring
-- Voice mode
+### Add a memory type
+
+1. Add class to `memory/types.py`
+2. Update `MemoryManager.save()` in `memory/manager.py`
+3. Add extraction prompt in `agent_v2.py`
+
+---
+
+## Changelog
+
+### v2.0 — March 31, 2026
+- ✨ Typed memory system (notes, observations, preferences, bookmarks)
+- ✨ Dream pass (auto-summaries every 5 messages)
+- ✨ User manager (per-user tracking)
+- ✨ Rate limiter (30/min default)
+- ✨ X1 price tool (native blockchain queries)
+- ✨ v2 bot with full feature parity
+
+### v1.0 — March 2026
+- Initial release
+- Web search, fetch, file ops, shell commands
+- Basic memory (flat file)
 
 ---
 
 ## Credits
 
-Built by Skywalker with help from Theo (Claude Sonnet 4.6 via OpenClaw).  
+Built by **Skywalker** with help from **Theo** (Claude Sonnet 4.6 via OpenClaw).
+
 Architecture patterns inspired by the Claude Code source leak — March 31, 2026.
 
 ---
