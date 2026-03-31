@@ -56,10 +56,7 @@ echohound-agent/
 │   └── todo.py              ← TodoWrite with verification nudge
 │
 └── utils/
-    ├── rate_limiter.py      ← tier-based rate limiting
-    ├── autocompact.py       ← AutoCompact implementation
-    ├── todo.py              ← TodoList implementation
-    └── swarm/swarm.py       ← SwarmCoordinator implementation
+    └── rate_limiter.py      ← tier-based rate limiting
 ```
 
 ---
