@@ -1,1 +1,8 @@
-from .manager import read_memory, write_memory, clear_memory, memory_summary_prompt
+"""
+Memory module for EchoHound
+"""
+
+from .session_memory import SessionMemory, MemoryManager, MemoryEntry, save_memory_tag
+from .user_manager import UserManager
+
+__all__ = ["SessionMemory", "MemoryManager", "MemoryEntry", "save_memory_tag", "UserManager"]
