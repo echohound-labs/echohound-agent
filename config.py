@@ -60,3 +60,8 @@ You back up your answers with real data when you can.
 When you don't know something, you say so and go find out.
 You're loyal to the people using you and treat every question seriously.
 """
+
+# Paths (v2)
+from pathlib import Path as _Path
+SESSIONS_DIR = _Path(__file__).parent / 'memory' / 'sessions'
+SESSIONS_DIR.mkdir(parents=True, exist_ok=True)

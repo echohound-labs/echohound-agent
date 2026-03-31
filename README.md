@@ -1,50 +1,66 @@
 # 🐾 EchoHound v2
 
-> Sharp, direct, community-first AI agent — powered by Claude.
-> Built for Telegram communities.
+Sharp, direct, community-first AI agent — powered by Claude. Built for Telegram communities.
+
+Architecture inspired by the Claude Code source leak — March 31, 2026.
 
 ---
 
-## What EchoHound Does v2
+## What EchoHound Does
 
-| Feature | Status |
-|---------|--------|
-| 🔍 **Web search** | Brave Search API + DuckDuckGo fallback |
-| 🌐 **Web fetch** | Full page extraction with markdown |
-| 📁 **File operations** | Sandboxed read/write/list |
-| 💻 **Shell commands** | Safety-limited execution |
-| 🧠 **Typed memory** | Session notes, observations, preferences, bookmarks |
-| 💭 **Dream pass** | Auto-generated summaries every 5 messages |
-| 👤 **User manager** | Per-user context tracking |
-| ⏱️ **Rate limiter** | Per-user rate limiting |
-| 💰 **X1 price tool** | Native X1 blockchain token prices |
-| 💬 **Telegram bot** | Mention-aware group responses |
+| Feature | Status | Details |
+|---|---|---|
+| 🔍 Web search | ✅ | Brave Search API + DuckDuckGo fallback |
+| 🌐 Web fetch | ✅ | Full page extraction, clean text output |
+| 📁 File operations | ✅ | Sandboxed read/write/list/delete |
+| 💻 Shell commands | ✅ | Safety-limited, confirmation-gated |
+| 💰 X1 price tool | ✅ | XNT price, any token, holders, gas stats |
+| 🧠 KAIROS session memory | ✅ | 9-section template, background extraction |
+| 📝 Typed long-term memory | ✅ | user / feedback / project / reference |
+| 👥 Community memory | ✅ | Shared knowledge across all users |
+| 💭 Dream pass | ✅ | Memory extraction every 5 messages |
+| 🌙 AutoDream | ✅ | Nightly consolidation (24h + 5 sessions) |
+| 📦 AutoCompact | ✅ | Context window management at 87% |
+| 🤖 Swarm | ✅ | Parallel subagent coordination |
+| ✅ TodoWrite | ✅ | Task tracking + verification nudge |
+| ⏱️ Rate limiter | ✅ | Tier-based (admin/whitelist/normal/new_user) |
+| 💬 Telegram bot | ✅ | Mention-aware, /x command prefix |
 
 ---
 
-## Project Structure v2
+## Project Structure
 
 ```
-echohound/
-├── agent_v2.py              ← Core agent with typed memory + dream pass
-├── telegram_bot_v2.py       ← Telegram bot with user manager + rate limiter
-├── config.py                ← Centralized config
-├── tools/
-│   ├── __init__.py          ← Tool registry
-│   ├── web_search.py        ← Brave Search + DDG fallback
-│   ├── web_fetch.py         ← URL fetch + HTML→markdown
-│   ├── file_ops.py          ← Sandboxed file ops
-│   ├── exec_tool.py         ← Shell with safety limits
-│   └── x1_price.py          ← X1 blockchain price queries
+echohound-agent/
+├── agent.py                 ← v1 agent (kept for reference)
+├── agent_v2.py              ← v2 agent — all KAIROS components wired
+├── telegram_bot.py          ← v1 bot (kept for reference)
+├── telegram_bot_v2.py       ← v2 bot — use this
+├── config.py                ← all settings in one place
+│
 ├── memory/
-│   ├── memory.md            ← Typed memory store
-│   ├── manager.py           ← Memory read/write/trim
-│   └── types.py             ← Note/Observation/Preference/Bookmark
-├── utils/
-│   ├── user_manager.py      ← Per-user session tracking
-│   └── rate_limiter.py      ← Rate limiting
-├── telegram_bot.py          ← Legacy v1 bot (kept for reference)
-└── agent.py                 ← Legacy v1 agent (kept for reference)
+│   ├── session_memory.py    ← KAIROS: 9-section template + 4-type taxonomy
+│   ├── user_manager.py      ← per-user + community memory
+│   └── manager.py           ← v1 flat memory (kept for reference)
+│
+├── tools/
+│   ├── web_search.py        ← Brave Search + DuckDuckGo fallback
+│   ├── web_fetch.py         ← URL fetch + HTML to text
+│   ├── file_ops.py          ← sandboxed file operations
+│   ├── exec_tool.py         ← shell with safety limits
+│   └── x1_price.py         ← XNT price, any token, holders, gas
+│
+├── services/                ← new in v2
+│   ├── auto_dream.py        ← nightly consolidation (4-phase)
+│   ├── auto_compact.py      ← context window management
+│   ├── swarm.py             ← parallel subagent coordinator
+│   └── todo.py              ← TodoWrite with verification nudge
+│
+└── utils/
+    ├── rate_limiter.py      ← tier-based rate limiting
+    ├── autocompact.py       ← AutoCompact implementation
+    ├── todo.py              ← TodoList implementation
+    └── swarm/swarm.py       ← SwarmCoordinator implementation
 ```
 
 ---
@@ -52,109 +68,153 @@ echohound/
 ## Quick Start
 
 ### 1. Clone and install
-
 ```bash
 git clone https://github.com/echohound-labs/echohound-agent.git
 cd echohound-agent
 pip install -r requirements.txt
 ```
 
-### 2. Set up your API keys
-
+### 2. Set up API keys
 ```bash
 cp .env.example .env
 # Edit .env and fill in your keys
 ```
 
 Required:
-- **Anthropic API key** → https://console.anthropic.com
-- **Telegram bot token** → get from @BotFather
-- **Brave Search API key** → https://api.search.brave.com (optional)
+- `ANTHROPIC_API_KEY` → https://console.anthropic.com
+- `TELEGRAM_BOT_TOKEN` → get from @BotFather
 
 Optional:
-- **X1 RPC endpoint** → for native X1 price queries (defaults to public RPC)
+- `BRAVE_API_KEY` → https://api.search.brave.com (free tier available)
 
-### 3. Run v2 Telegram bot
-
+### 3. Run
 ```bash
 python telegram_bot_v2.py
 ```
 
 ---
 
-## v2 Architecture
+## Architecture — KAIROS Memory System
 
-### Typed Memory System
+All memory patterns are derived from the Claude Code source leak (March 31, 2026).
 
-Every memory is typed:
+### Session Memory (`memory/session_memory.py`)
+Every conversation gets a structured 9-section template:
 
-```python
-class Note:          # Factual information
-class Observation:   # Things noticed about users
-class Preference:    # User preferences
-class Bookmark:      # Saved URLs/topics
+```
+# Session Title
+# Current State       ← read this first after any gap
+# Task Specification
+# Files and Functions
+# Workflow
+# Errors & Corrections
+# Learnings
+# Key Results
+# Worklog
 ```
 
-Auto-generated tags + relevance scoring.
+Two thresholds must **both** be met before extraction fires: message count AND tool call count. Runs as a background task — never blocks your response.
+
+### Typed Long-Term Memory
+Four hard types, each with strict format rules:
+
+| Type | What | Format |
+|---|---|---|
+| `user` | Who they are, expertise, preferences | Fact + Why it matters |
+| `feedback` | Corrections AND confirmations | Rule + Why + Apply |
+| `project` | Ongoing work, decisions | Fact + Why + Apply |
+| `reference` | External systems, docs | Pointer + purpose |
+
+**Key insight**: EchoHound saves feedback on BOTH corrections ("stop doing X") AND confirmations ("yes exactly, keep that"). Most bots only save corrections. Saving confirmations is what keeps it consistent across sessions.
+
+### Community Memory (`memory/user_manager.py`)
+Separate from per-user memory — facts relevant to the whole group are saved to `memory/community.md` and injected for all users.
 
 ### Dream Pass
+Every 5 messages, a background subagent reads the recent conversation and extracts typed memories. Cheap, non-blocking, automatic.
 
-Every 5 messages, EchoHound generates a running summary:
+### AutoDream (`services/auto_dream.py`)
+Fires after 24h + 5 sessions accumulated. 4-phase pipeline:
+1. **Orient** — read existing consolidated memory
+2. **Gather** — extract signal from session files
+3. **Consolidate** — merge, fix contradictions, keep newer on conflict
+4. **Prune** — keep index entries under 150 chars
 
-```
-Dream Summary #3 | 2026-03-31 10:45 UTC
-├── Context: X1 ecosystem tools, price monitoring
-├── Active threads: validator staking, grant applications
-├── Pending: Token economics discussion
-└── Mood: Technical, focused, collaborative
-```
+### AutoCompact (`services/auto_compact.py`)
+Fires at ~87% context window usage. Leaves 13K token buffer. Circuit-breaks after 3 consecutive failures to stop wasting API calls.
 
-### User Manager
+### Swarm (`services/swarm.py`)
+Spawn parallel subagents for independent tasks. Workers share parent context and report back to the coordinator.
 
-Per-user tracking:
-- User ID, username, first interaction
-- Message count, memory references
-- Current session context
-- Rate limit status
-
-### Rate Limiter
-
-- Default: 30 messages/minute per user
-- Burst: 10 messages allowed
-- Auto-reset after window expires
-
-### X1 Price Tool
-
-Native X1 blockchain integration:
-- Query any X1 token price
-- Uses XDEX API + on-chain data
-- No API key required
+### TodoWrite (`services/todo.py`)
+The todo list is a real tool with state. Verification nudge: complete 3+ tasks without a verification step and it reminds you to check your work before finishing.
 
 ---
 
 ## Bot Commands
 
+All commands use `/x` prefix to avoid collisions with other bots.
+
 | Command | What it does |
-|---------|-------------|
-| `/start` | Introduction + user registration |
-| `/help` | Show v2 feature list |
-| `/memory` | View your memories |
-| `/dream` | Show last dream summary |
-| `/clear` | Clear your session |
-| `/reset` | Wipe all your data |
-| `/rate` | Check your rate limit status |
+|---|---|
+| `/start` | Introduction |
+| `/xhelp` | Show all commands |
+| `/xmemory` | View EchoHound's memory of you |
+| `/xdream` | Show dream pass summary |
+| `/xstatus` | Agent health (compact, dream, memory) |
+| `/xclear` | Clear conversation history (keeps memory) |
+| `/xreset` | Wipe all your memory entirely |
+| `/xrate` | Check your rate limit status |
+
+In groups, mention `@yourbotname` or reply to a bot message to trigger a response.
 
 ---
 
-## Deploying on a VPS
+## Rate Limiting
 
-### systemd service (recommended)
+Four tiers:
 
-Create `/etc/systemd/system/echohound.service`:
+| Tier | Limit | Notes |
+|---|---|---|
+| `admin` | Unlimited | User IDs in `ADMIN_USER_IDS` in config.py |
+| `whitelisted` | Unlimited | Set per user |
+| `normal` | 10/min, 50/hr | Default for established users |
+| `new_user` | 5/min, 20/hr | First 24 hours |
+
+Progressive cooldowns on violations: 1min → 5min → 15min → 30min → 60min.
+
+---
+
+## Agentic Loop v2
+
+```
+User message
+     ↓
+Rate limiter: check tier + allowance
+     ↓
+Build system prompt:
+  personality + KAIROS session state + typed memories + community memory
+     ↓
+Call Claude API with all tools attached
+     ↓
+Claude decides: answer directly OR use tool(s)
+     ↓  (if tool)
+Permission check → execute → feed result back → loop
+     ↓
+Final response → send to user
+     ↓
+Background: session memory extraction (if thresholds met)
+Background: dream pass (every 5 messages)
+```
+
+---
+
+## Deploy on a VPS
 
 ```ini
+# /etc/systemd/system/echohound.service
 [Unit]
-Description=EchoHound v2 Telegram Bot
+Description=EchoHound v2
 After=network.target
 
 [Service]
@@ -169,7 +229,6 @@ RestartSec=5
 WantedBy=multi-user.target
 ```
 
-Then:
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl enable echohound
@@ -178,72 +237,43 @@ sudo systemctl start echohound
 
 ---
 
-## The Agentic Loop v2
-
-```
-User message
-     ↓
-User manager: identify + track
-     ↓
-Rate limiter: check allowance
-     ↓
-Build prompt (personality + typed memories + dream pass)
-     ↓
-Call Claude API with v2 tools
-     ↓
-Claude decides: direct answer OR tool use
-     ↓  (if tool)
-Execute tool → feed result → loop
-     ↓
-Final response → send
-     ↓
-Memory manager: extract + save typed memories
-     ↓
-Dream pass: update if message count threshold
-```
-
----
-
-## Extending EchoHound v2
+## Extending EchoHound
 
 ### Add a new tool
-
-1. Create `tools/my_tool.py` with your function
-2. Add to `TOOL_DEFINITIONS` and `TOOL_MAP` in `tools/__init__.py`
-3. Claude will use it automatically
+1. Create `tools/my_tool.py`
+2. Add to `TOOL_MAP` and `CORE_TOOL_DEFINITIONS` in `agent_v2.py`
+3. Claude uses it automatically
 
 ### Add a memory type
-
-1. Add class to `memory/types.py`
-2. Update `MemoryManager.save()` in `memory/manager.py`
-3. Add extraction prompt in `agent_v2.py`
+1. Add to `MEMORY_TYPES` in `memory/session_memory.py`
+2. Update `memory_save` tool description in `agent_v2.py`
 
 ---
 
 ## Changelog
 
 ### v2.0 — March 31, 2026
-- ✨ Typed memory system (notes, observations, preferences, bookmarks)
-- ✨ Dream pass (auto-summaries every 5 messages)
-- ✨ User manager (per-user tracking)
-- ✨ Rate limiter (30/min default)
-- ✨ X1 price tool (native blockchain queries)
-- ✨ v2 bot with full feature parity
+- ✨ KAIROS session memory fully wired into agent loop (was built but unused in v1)
+- ✨ 4-type typed memory (user / feedback / project / reference)
+- ✨ Community memory — shared group knowledge separate from per-user memory
+- ✨ Dream pass every 5 messages
+- ✨ AutoDream nightly consolidation (4-phase)
+- ✨ AutoCompact context window management with circuit breaker
+- ✨ Swarm parallel subagents
+- ✨ TodoWrite with verification nudge
+- ✨ Tier-based rate limiter
+- ✨ `/x` command prefix, `/xdream` `/xstatus` `/xrate` commands
+- ✨ `services/` layer connecting everything
 
 ### v1.0 — March 2026
-- Initial release
-- Web search, fetch, file ops, shell commands
-- Basic memory (flat file)
+- Initial release: web search, fetch, file ops, shell, X1 price tool, basic memory
 
 ---
 
 ## Credits
 
-Built by **Skywalker** with help from **Theo** (Claude Sonnet 4.6 via OpenClaw).
-
-Architecture patterns inspired by the Claude Code source leak — March 31, 2026.
-
----
+Built by Skywalker with help from Theo (Claude Sonnet 4.6 via OpenClaw).
+Architecture patterns from the Claude Code source leak — March 31, 2026.
 
 ## License
 

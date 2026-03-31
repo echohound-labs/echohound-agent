@@ -1,172 +1,435 @@
 """
-EchoHound v2 — Core Agent Loop
-===============================
-Enhanced with per-user memory injection and memory-aware responses.
+EchoHound v2 — Core Agent
+==========================
+Wires together everything that was built but never connected:
+  - memory/session_memory.py  (KAIROS 9-section template + 4-type taxonomy)
+  - memory/user_manager.py    (per-user + community memory)
+  - utils/rate_limiter.py     (tier-based rate limiting)
+  - tools/*                   (web, files, shell, x1 price)
+  - services/auto_dream.py    (nightly consolidation)
+  - services/auto_compact.py  (context window management)
+  - services/swarm.py         (parallel subagents)
+  - services/todo.py          (task tracking + verification nudge)
 
-Architecture inspired by Claude Code's leaked source (March 31, 2026).
+Architecture inspired by Claude Code source leak — March 31, 2026.
 """
 
+import asyncio
 import json
+import re
+import time
+from pathlib import Path
+from typing import Optional
+
 import anthropic
+
 from config import (
     ANTHROPIC_API_KEY, MODEL, MAX_TOKENS,
     AGENT_NAME, AGENT_PERSONALITY,
     CONFIRM_REQUIRED, AUTO_ALLOWED,
 )
-from tools import TOOL_DEFINITIONS, TOOL_MAP
+
+# ── Memory (already in repo — now actually used) ───────────────────────────────
+from memory.session_memory import (
+    build_memory_prompt_for_user,
+    get_session_memory,
+    save_typed_memory,
+    should_extract_memory,
+    get_memory_update_prompt,
+    init_session_memory,
+    clear_session_memory,
+)
+from memory.user_manager import (
+    get_user_memory,
+    write_user_memory,
+    memory_for_prompt,
+    clear_user_memory,
+)
+
+# ── New services ───────────────────────────────────────────────────────────────
+from services.auto_dream import AutoDream, run_dream_scheduler
+from services.auto_compact import AutoCompact
+from services.swarm import SwarmCoordinator
+from services.todo import TodoList, TODO_TOOL_DEFINITIONS
+
+# ── Tools (already in repo) ────────────────────────────────────────────────────
+from tools.web_search import web_search
+from tools.web_fetch import web_fetch
+from tools.file_ops import file_read, file_write, file_list, file_delete
+from tools.exec_tool import exec_command
+from tools.x1_price import (
+    get_xnt_price, get_token_price, get_xnt_holders, get_gas_stats,
+    format_price_response,
+    TOOL_DEFINITIONS as X1_TOOL_DEFINITIONS,
+    TOOL_MAP as X1_TOOL_MAP,
+)
 
 client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
+DREAM_PASS_EVERY = 5  # run dream memory extraction every N messages
 
-def build_system_prompt(memory_context: str = "", user_name: str = None) -> str:
-    """
-    Construct the full system prompt with optional memory injection.
-    
-    Args:
-        memory_context: User-specific + community memory to inject
-        user_name: User's display name for personalization
-    """
-    user_line = f"\nYou're chatting with {user_name}." if user_name else ""
-    
-    return f"""{AGENT_PERSONALITY}{user_line}
+# ── Tool definitions ───────────────────────────────────────────────────────────
 
-When users share information worth remembering (facts, preferences, names, decisions), 
-you can signal it by ending your response with [MEMORY: brief summary here].
-Be selective — only save genuinely important facts, not every detail.
+CORE_TOOL_DEFINITIONS = [
+    {
+        "name": "web_search",
+        "description": "Search the web for current information. Uses Brave Search, falls back to DuckDuckGo.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query":   {"type": "string"},
+                "count":   {"type": "integer", "default": 5},
+                "country": {"type": "string", "default": "US"},
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "web_fetch",
+        "description": "Fetch and read a full webpage as clean text.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "url":       {"type": "string"},
+                "max_chars": {"type": "integer", "default": 8000},
+            },
+            "required": ["url"],
+        },
+    },
+    {
+        "name": "file_read",
+        "description": "Read a file. Supports line offset and limit.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path":   {"type": "string"},
+                "offset": {"type": "integer", "default": 1},
+                "limit":  {"type": "integer", "default": 200},
+            },
+            "required": ["path"],
+        },
+    },
+    {
+        "name": "file_write",
+        "description": "Write content to a file (sandboxed).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path":      {"type": "string"},
+                "content":   {"type": "string"},
+                "overwrite": {"type": "boolean", "default": True},
+            },
+            "required": ["path", "content"],
+        },
+    },
+    {
+        "name": "file_list",
+        "description": "List files in a directory. Supports glob patterns.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path":    {"type": "string", "default": "."},
+                "pattern": {"type": "string", "default": "*"},
+            },
+        },
+    },
+    {
+        "name": "exec_command",
+        "description": "Run a shell command. Requires confirmation for destructive ops.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "command": {"type": "string"},
+                "timeout": {"type": "integer", "default": 30},
+            },
+            "required": ["command"],
+        },
+    },
+    {
+        "name": "memory_save",
+        "description": (
+            "Save to long-term memory. "
+            "IMPORTANT: save CONFIRMATIONS as well as corrections. "
+            "When user says 'yes exactly' or 'keep doing that' — save it as feedback. "
+            "This is what keeps you consistent across sessions."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "enum": ["user", "feedback", "project", "reference"],
+                    "description": "user=who they are | feedback=corrections+confirmations | project=ongoing work | reference=external pointers",
+                },
+                "content": {
+                    "type": "string",
+                    "description": "Fact. **Why it matters:** ... **Apply:** when to use. Under 300 chars.",
+                },
+            },
+            "required": ["type", "content"],
+        },
+    },
+    {
+        "name": "swarm_spawn",
+        "description": "Spawn parallel subagents for independent tasks. Use when work can be parallelized.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "subtasks": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of independent task prompts to run in parallel",
+                },
+                "context": {"type": "string", "description": "Shared context for all subagents"},
+            },
+            "required": ["subtasks"],
+        },
+    },
+]
 
-You have access to tools:
-- web_search: Find current information via Brave Search
-- web_fetch: Read full web pages and extract content
-- file_read: Read files (sandboxed to project directory)
-- file_write: Write files (sandboxed)
-- exec_command: Run shell commands (requires confirmation)
-- memory_read: Read your own memory files
+ALL_TOOL_DEFINITIONS = CORE_TOOL_DEFINITIONS + TODO_TOOL_DEFINITIONS + X1_TOOL_DEFINITIONS
 
-{memory_context}
-"""
-
-
-def run_turn(
-    messages: list,
-    user_input: str,
-    confirm_callback=None,
-    memory_context: str = "",
-    user_name: str = None,
-) -> tuple[str, list]:
-    """
-    Run a single conversation turn with full agentic tool loop.
-
-    Args:
-        messages:         Conversation history (list of {role, content})
-        user_input:       The user's message
-        confirm_callback: Optional fn(tool_name, tool_input) -> bool
-                          Called before CONFIRM_REQUIRED tools.
-                          If None, all tools auto-approve (CLI mode).
-        memory_context:   Optional memory to inject into system prompt
-        user_name:        User's display name for personalization
-
-    Returns:
-        (response_text, updated_messages)
-    """
-    messages = messages + [{"role": "user", "content": user_input}]
-    system = build_system_prompt(memory_context, user_name)
-
-    while True:
-        response = client.messages.create(
-            model=MODEL,
-            max_tokens=MAX_TOKENS,
-            system=system,
-            tools=TOOL_DEFINITIONS,
-            messages=messages,
-        )
-
-        # Collect text and tool use blocks
-        text_parts = []
-        tool_calls = []
-
-        for block in response.content:
-            if block.type == "text":
-                text_parts.append(block.text)
-            elif block.type == "tool_use":
-                tool_calls.append(block)
-
-        # If no tool calls — we're done
-        if response.stop_reason == "end_turn" or not tool_calls:
-            final_text = " ".join(text_parts).strip()
-            messages.append({"role": "assistant", "content": response.content})
-            return final_text, messages
-
-        # Process tool calls
-        messages.append({"role": "assistant", "content": response.content})
-        tool_results = []
-
-        for tool_call in tool_calls:
-            tool_name = tool_call.name
-            tool_input = tool_call.input
-
-            # Permission check
-            if tool_name in CONFIRM_REQUIRED and confirm_callback:
-                approved = confirm_callback(tool_name, tool_input)
-                if not approved:
-                    result = {"error": f"User denied permission to run '{tool_name}'"}
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": tool_call.id,
-                        "content": json.dumps(result),
-                    })
-                    continue
-
-            # Execute tool
-            if tool_name in TOOL_MAP:
-                try:
-                    result = TOOL_MAP[tool_name](**tool_input)
-                except Exception as e:
-                    result = {"error": f"Tool execution failed: {str(e)}"}
-            else:
-                result = {"error": f"Unknown tool: {tool_name}"}
-
-            tool_results.append({
-                "type": "tool_result",
-                "tool_use_id": tool_call.id,
-                "content": json.dumps(result),
-            })
-
-        # Feed tool results back and loop
-        messages.append({"role": "user", "content": tool_results})
+TOOL_MAP = {
+    "web_search":   lambda a: web_search(a.get("query"), a.get("count", 5), a.get("country", "US")),
+    "web_fetch":    lambda a: web_fetch(a.get("url"), a.get("max_chars", 8000)),
+    "file_read":    lambda a: file_read(a.get("path"), a.get("offset", 1), a.get("limit", 200)),
+    "file_write":   lambda a: file_write(a.get("path"), a.get("content"), a.get("overwrite", True)),
+    "file_list":    lambda a: file_list(a.get("path", "."), a.get("pattern", "*")),
+    "exec_command": lambda a: exec_command(a.get("command"), a.get("timeout", 30)),
+    **X1_TOOL_MAP,
+}
 
 
-def cli_confirm(tool_name: str, tool_input: dict) -> bool:
-    """Terminal confirmation prompt for sensitive tools."""
-    print(f"\n⚠️  {AGENT_NAME} wants to run: {tool_name}")
-    print(f"   Input: {json.dumps(tool_input, indent=2)}")
-    ans = input("   Allow? [y/N]: ").strip().lower()
-    return ans in ("y", "yes")
+def _build_system_prompt(user_id: int, user_name: str = None) -> str:
+    """Build full system prompt with all memory layers injected."""
+    parts = [AGENT_PERSONALITY]
+    if user_name:
+        parts.append(f"\nYou're talking with {user_name}.")
+
+    # KAIROS session memory (Current State first — most important for continuity)
+    session_ctx = build_memory_prompt_for_user(user_id)
+    if session_ctx:
+        parts.append(session_ctx)
+
+    # Per-user + community typed memories
+    mem_ctx = memory_for_prompt(user_id)
+    if mem_ctx:
+        parts.append(mem_ctx)
+
+    parts.append(
+        "\nMemory: use memory_save tool to save facts. "
+        "Save CONFIRMATIONS too, not just corrections. "
+        "Or tag inline: [SAVE_MEMORY type=feedback]content[/SAVE_MEMORY]"
+    )
+
+    return "\n".join(parts)
 
 
-def run_cli():
-    """Interactive CLI mode — chat with EchoHound in your terminal."""
-    print(f"\n🐾 {AGENT_NAME} is online. Type 'exit' to quit.\n")
-    messages = []
+def _process_inline_tags(text: str, user_id: int):
+    """Save any [SAVE_MEMORY] tags the agent emitted inline."""
+    pattern = r'\[SAVE_MEMORY type=(\w+)\](.*?)\[/SAVE_MEMORY\]'
+    for mtype, content in re.findall(pattern, text, re.DOTALL):
+        if mtype in ("user", "feedback", "project", "reference"):
+            save_typed_memory(user_id, mtype, content.strip())
 
-    while True:
+
+async def _execute_tool(name, args, user_id, todo=None, swarm=None):
+    if name in TOOL_MAP:
         try:
-            user_input = input("You: ").strip()
-        except (KeyboardInterrupt, EOFError):
-            print("\nBye.")
-            break
+            return TOOL_MAP[name](args)
+        except Exception as e:
+            return {"error": str(e)}
 
-        if not user_input:
-            continue
-        if user_input.lower() == "exit":
-            break
+    if name == "memory_save":
+        save_typed_memory(user_id, args["type"], args["content"])
+        return {"saved": True, "type": args["type"]}
 
-        response, messages = run_turn(
-            messages,
-            user_input,
-            confirm_callback=cli_confirm,
+    if name == "swarm_spawn" and swarm:
+        return await swarm.research_swarm(
+            args.get("subtasks", []),
+            shared_context={"context": args.get("context", "")},
         )
-        print(f"\n{AGENT_NAME}: {response}\n")
+
+    if todo:
+        if name == "todo_add":
+            item = todo.add(args["task"], args.get("priority", 1), args.get("is_verification", False))
+            return f"Added [{item.id}]: {item.task}" + (todo.get_nudge_message() or "")
+        if name == "todo_complete":
+            item = todo.complete(args["task_id"], args.get("notes", ""))
+            return (f"Done: {item.task}" if item else f"Not found: {args['task_id']}") + (todo.get_nudge_message() or "")
+        if name == "todo_in_progress":
+            item = todo.set_in_progress(args["task_id"])
+            return f"In progress: {item.task}" if item else f"Not found: {args['task_id']}"
+
+    return {"error": f"Unknown tool: {name}"}
 
 
-if __name__ == "__main__":
-    run_cli()
+# ── EchoHound per-user agent ───────────────────────────────────────────────────
+
+class EchoHound:
+    """
+    Stateful per-user EchoHound agent.
+    One instance per user. Holds conversation + all KAIROS components.
+    """
+
+    def __init__(self, user_id: int, user_name: str = "", first_name: str = ""):
+        self.user_id   = user_id
+        self.user_name = user_name or first_name or str(user_id)
+        self.messages: list = []
+
+        self._msg_count        = 0
+        self._tool_calls       = 0
+        self._last_extract_at  = 0
+        self._msgs_since_dream = 0
+        self._dream_count      = 0
+
+        self.todo        = TodoList(session_id=str(user_id))
+        self.autocompact = AutoCompact()
+        self._swarm      = SwarmCoordinator(client)
+
+        init_session_memory(user_id)
+
+    async def chat(self, text: str, confirm_callback=None) -> str:
+        messages = self.messages + [{"role": "user", "content": text}]
+        system   = _build_system_prompt(self.user_id, self.user_name)
+
+        if self.autocompact.should_compact(messages, system):
+            messages, _ = await self.autocompact.compact(messages, system)
+
+        tool_call_count = 0
+
+        while True:
+            response = client.messages.create(
+                model=MODEL,
+                max_tokens=MAX_TOKENS,
+                system=system,
+                tools=ALL_TOOL_DEFINITIONS,
+                messages=messages,
+            )
+
+            text_parts, tool_calls = [], []
+            for block in response.content:
+                if block.type == "text":       text_parts.append(block.text)
+                elif block.type == "tool_use": tool_calls.append(block)
+
+            messages.append({"role": "assistant", "content": response.content})
+
+            if not tool_calls:
+                final = " ".join(text_parts).strip()
+                break
+
+            tool_results = []
+            for tc in tool_calls:
+                if tc.name in CONFIRM_REQUIRED and confirm_callback:
+                    if not confirm_callback(tc.name, tc.input):
+                        result = {"error": f"Permission denied for '{tc.name}'"}
+                        tool_results.append({"type": "tool_result", "tool_use_id": tc.id, "content": json.dumps(result)})
+                        continue
+                result = await _execute_tool(tc.name, tc.input, self.user_id, self.todo, self._swarm)
+                tool_call_count += 1
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": tc.id,
+                    "content": json.dumps(result) if isinstance(result, dict) else str(result),
+                })
+            messages.append({"role": "user", "content": tool_results})
+
+        self.messages       = messages
+        self._msg_count    += 1
+        self._tool_calls   += tool_call_count
+        self._msgs_since_dream += 1
+
+        # Process inline memory tags
+        _process_inline_tags(final, self.user_id)
+        final = re.sub(r'\[SAVE_MEMORY[^\]]*\].*?\[/SAVE_MEMORY\]', '', final, flags=re.DOTALL).strip()
+
+        # Background session memory extraction
+        if should_extract_memory(self._msg_count, self._tool_calls, self._last_extract_at):
+            self._last_extract_at = self._msg_count
+            asyncio.create_task(self._background_extract())
+
+        # Dream pass every N messages
+        if self._msgs_since_dream >= DREAM_PASS_EVERY:
+            self._msgs_since_dream = 0
+            asyncio.create_task(self._dream_pass())
+
+        return final
+
+    async def _background_extract(self):
+        """Background subagent: update KAIROS session template. Never blocks response."""
+        try:
+            prompt = get_memory_update_prompt(self.user_id, str(self.user_id))
+            resp = await asyncio.to_thread(
+                client.messages.create,
+                model=MODEL,
+                max_tokens=2000,
+                messages=[*self.messages[-20:], {"role": "user", "content": prompt}]
+            )
+            _process_inline_tags(resp.content[0].text, self.user_id)
+        except Exception as e:
+            print(f"[SessionMemory] Background extract error: {e}")
+
+    async def _dream_pass(self):
+        """Every 5 messages: extract typed memories from recent conversation."""
+        try:
+            conv = "\n".join(
+                f"[{m['role'].upper()}]: {str(m.get('content',''))[:300]}"
+                for m in self.messages[-30:]
+                if isinstance(m.get('content'), str)
+            )
+            prompt = f"""BACKGROUND TASK — memory extraction. Do not reference this in chat.
+
+Read this conversation and extract any facts worth saving long-term.
+Output [SAVE_MEMORY type=user|feedback|project|reference]content[/SAVE_MEMORY] for each.
+Save CONFIRMATIONS too — not just corrections.
+If nothing worth saving, output nothing.
+
+CONVERSATION:
+{conv[:4000]}"""
+
+            resp = await asyncio.to_thread(
+                client.messages.create,
+                model=MODEL,
+                max_tokens=600,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            _process_inline_tags(resp.content[0].text, self.user_id)
+            self._dream_count += 1
+        except Exception as e:
+            print(f"[DreamPass] Error: {e}")
+
+    # ── Public interface ───────────────────────────────────────────────────────
+
+    def clear_history(self):
+        self.messages = []
+        self._msg_count = self._tool_calls = 0
+
+    def reset_memory(self):
+        clear_user_memory(self.user_id)
+        clear_session_memory(self.user_id)
+        self.messages = []
+
+    def get_memory_display(self) -> str:
+        user_mem = get_user_memory(self.user_id)
+        session  = get_session_memory(self.user_id)
+        parts = []
+        if user_mem.strip():
+            parts.append(f"**Long-term memory:**\n{user_mem[:1500]}")
+        if session.strip():
+            parts.append(f"**Session notes:**\n{session[:800]}")
+        return "\n\n".join(parts) or "(no memories yet)"
+
+    def get_dream_summary(self) -> str:
+        return (
+            f"Dream passes this session: {self._dream_count}\n"
+            f"Next in: {max(0, DREAM_PASS_EVERY - self._msgs_since_dream)} messages"
+        )
+
+    def status(self) -> str:
+        c = self.autocompact.status()
+        return (
+            f"**EchoHound v2 Status**\n"
+            f"Messages: {self._msg_count} | Tools used: {self._tool_calls}\n"
+            f"Dream passes: {self._dream_count} | Next in: {max(0, DREAM_PASS_EVERY - self._msgs_since_dream)} msgs\n"
+            f"AutoCompact: {'🔴 circuit broken' if c.get('circuit_open') else '🟢 ok'}"
+        )
