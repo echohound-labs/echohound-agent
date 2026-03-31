@@ -1,7 +1,7 @@
 # 🐾 EchoHound
 
 > Sharp, direct, community-first AI agent — powered by Claude.  
-> Built for Telegram communities. Inspired by the Claude Code architecture leak (March 31, 2026).
+> Built for Telegram communities.
 
 ---
 
