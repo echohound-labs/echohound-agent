@@ -23,6 +23,13 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")        # Fallback / image gen
 MEMORY_FILE = "memory/memory.md"
 MEMORY_MAX_CHARS = 8000              # Trim older entries beyond this
 
+# ── Admin Users (Telegram user IDs that bypass rate limits and have access to admin commands) ─
+# Add your Telegram user ID here. Find it via @userinfobot or similar.
+ADMIN_USER_IDS = [
+    5451495644,  # Skywalker
+    # Add more admin IDs here
+]
+
 # ── Permissions ───────────────────────────────────────────────────────────────
 # Tools that require explicit user confirmation before running
 CONFIRM_REQUIRED = ["exec", "file_write", "file_delete"]
