@@ -1,0 +1,11 @@
+{
+  "-1003399761943:5451495644": {
+    "first_seen": "2026-03-31T22:45:04.017453",
+    "message_times": [
+      1775011738.5175793
+    ],
+    "tier": "admin",
+    "violation_count": 0,
+    "cooldown_until": 0
+  }
+}

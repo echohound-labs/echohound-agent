@@ -1,3 +1,5 @@
+from dotenv import load_dotenv
+load_dotenv()
 """
 EchoHound v2 — Telegram Bot
 =============================
@@ -13,6 +15,8 @@ Run: python telegram_bot_v2.py
 """
 
 import logging
+import asyncio
+import asyncio
 from telegram import Update
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, filters, ContextTypes,

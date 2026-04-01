@@ -204,7 +204,7 @@ TOOL_MAP = {
 }
 
 
-def _build_system_prompt(user_id: int, user_name: str = None) -> str:
+def _build_system_prompt(user_id: int, user_name: str = None, chat_id: int = 0) -> str:
     """Build full system prompt with all memory layers injected."""
     parts = [AGENT_PERSONALITY]
     if user_name:
@@ -216,7 +216,7 @@ def _build_system_prompt(user_id: int, user_name: str = None) -> str:
         parts.append(session_ctx)
 
     # Per-user + community typed memories
-    mem_ctx = memory_for_prompt(user_id, chat_id=self.chat_id)
+    mem_ctx = memory_for_prompt(user_id, chat_id=chat_id)
     if mem_ctx:
         parts.append(mem_ctx)
 
@@ -299,7 +299,7 @@ class EchoHound:
     async def chat(self, text: str, confirm_callback=None) -> str:
         budget, text = extract_budget_from_message(text)
         messages = self.messages + [{"role": "user", "content": text}]
-        system   = _build_system_prompt(self.user_id, self.user_name)
+        system   = _build_system_prompt(self.user_id, self.user_name, self.chat_id)
 
         if self.autocompact.should_compact(messages, system):
             messages, _ = await self.autocompact.compact(messages, system)

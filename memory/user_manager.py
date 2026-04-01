@@ -197,14 +197,14 @@ def _trim_oldest(content: str, max_chars: int) -> str:
     return result
 
 
-def memory_for_prompt(user_id: int) -> str:
+def memory_for_prompt(user_id: int, chat_id: int = 0) -> str:
     """
     Format user + community memory for injection into system prompt.
     """
     parts = []
     
     # User memory
-    user_mem = get_user_memory(user_id)
+    user_mem = get_user_memory(user_id, chat_id)
     if user_mem.strip() and not user_mem.strip().endswith("Memory wiped by user."):
         parts.append(f"## What you remember about this user:\n{user_mem}")
     
