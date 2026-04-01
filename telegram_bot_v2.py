@@ -19,6 +19,7 @@ from telegram.ext import (
 )
 
 from config import TELEGRAM_BOT_TOKEN, AGENT_NAME, ADMIN_USER_IDS
+from utils.spinner import get_stalled_message, STALL_THRESHOLD_SECONDS
 from agent_v2 import EchoHound
 from utils.rate_limiter import RateLimiter, get_user_stats
 
@@ -142,8 +143,17 @@ async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     agent = get_agent(uid, user.username or "", user.first_name or "")
     await ctx.bot.send_chat_action(chat_id, "typing")
 
+    response_done = False
+    async def _stall_watcher():
+        await asyncio.sleep(STALL_THRESHOLD_SECONDS)
+        if not response_done:
+            await update.message.reply_text(get_stalled_message())
+    stall_task = asyncio.create_task(_stall_watcher())
+
     try:
         response = await agent.chat(text, confirm_callback=auto_approve)
+        response_done = True
+        stall_task.cancel()
         if len(response) > 4000:
             for chunk in [response[i:i+4000] for i in range(0, len(response), 4000)]:
                 await update.message.reply_text(chunk)
@@ -152,6 +162,13 @@ async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Error for user {uid}: {e}", exc_info=True)
         await update.message.reply_text("Something went wrong. Try again or /xclear.")
+
+
+async def cmd_cost(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    await update.message.reply_text(
+        get_agent(uid).cost.format_summary(), parse_mode="Markdown"
+    )
 
 
 def main():
@@ -169,6 +186,7 @@ def main():
     app.add_handler(CommandHandler("xclear",  cmd_clear))
     app.add_handler(CommandHandler("xreset",  cmd_reset))
     app.add_handler(CommandHandler("xrate",   cmd_rate))
+    app.add_handler(CommandHandler("xcost",   cmd_cost))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     logger.info(f"🐾 {AGENT_NAME} v2 starting...")

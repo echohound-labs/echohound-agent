@@ -64,6 +64,10 @@ from tools.x1_price import (
     TOOL_MAP as X1_TOOL_MAP,
 )
 
+from utils.cost_tracker import CostTracker
+from utils.api_retry import create_with_retry
+from utils.token_budget import extract_budget_from_message
+
 client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
 DREAM_PASS_EVERY = 5  # run dream memory extraction every N messages
@@ -287,9 +291,12 @@ class EchoHound:
         self.autocompact = AutoCompact()
         self._swarm      = SwarmCoordinator(client)
 
+        self.cost = CostTracker()
+
         init_session_memory(user_id)
 
     async def chat(self, text: str, confirm_callback=None) -> str:
+        budget, text = extract_budget_from_message(text)
         messages = self.messages + [{"role": "user", "content": text}]
         system   = _build_system_prompt(self.user_id, self.user_name)
 
@@ -299,13 +306,15 @@ class EchoHound:
         tool_call_count = 0
 
         while True:
-            response = client.messages.create(
+            response = await create_with_retry(
+                client,
                 model=MODEL,
                 max_tokens=MAX_TOKENS,
                 system=system,
                 tools=ALL_TOOL_DEFINITIONS,
                 messages=messages,
             )
+            self.cost.add(response.usage, MODEL)
 
             text_parts, tool_calls = [], []
             for block in response.content:
@@ -403,6 +412,7 @@ CONVERSATION:
     def clear_history(self):
         self.messages = []
         self._msg_count = self._tool_calls = 0
+        self.cost.reset()
 
     def reset_memory(self):
         clear_user_memory(self.user_id)
@@ -431,5 +441,6 @@ CONVERSATION:
             f"**EchoHound v2 Status**\n"
             f"Messages: {self._msg_count} | Tools used: {self._tool_calls}\n"
             f"Dream passes: {self._dream_count} | Next in: {max(0, DREAM_PASS_EVERY - self._msgs_since_dream)} msgs\n"
-            f"AutoCompact: {'🔴 circuit broken' if c.get('circuit_open') else '🟢 ok'}"
+            f"AutoCompact: {'🔴 circuit broken' if c.get('circuit_open') else '🟢 ok'}\n"
+            f"{self.cost.format_summary()}"
         )

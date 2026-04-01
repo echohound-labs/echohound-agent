@@ -6,3 +6,5 @@ __pycache__/
 *.pyo
 .DS_Store
 memory/memory.md   # optional: remove this line if you want memory in version control
+memory/sessions/
+memory/users/
