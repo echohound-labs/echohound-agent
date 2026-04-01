@@ -2,7 +2,6 @@
 
 Sharp, direct, community-first AI agent — powered by Claude. Built for Telegram communities.
 
-Architecture inspired by the Claude Code source leak — March 31, 2026.
 
 ---
 
