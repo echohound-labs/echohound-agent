@@ -333,7 +333,6 @@ class EchoHound:
             if not tool_calls:
                 final = " ".join(text_parts).strip()
                 break
-            iteration += 1
 
             tool_results = []
             for tc in tool_calls:
@@ -350,7 +349,6 @@ class EchoHound:
                     "content": json.dumps(result) if isinstance(result, dict) else str(result),
                 })
             messages.append({"role": "user", "content": tool_results})
-            iteration += 1
         else:
             final = "I got stuck in a loop. Please try again."
 
@@ -362,6 +360,8 @@ class EchoHound:
         # Process inline memory tags
         _process_inline_tags(final, self.user_id)
         final = re.sub(r'\[SAVE_MEMORY[^\]]*\].*?\[/SAVE_MEMORY\]', '', final, flags=re.DOTALL).strip()
+        if not final:
+            final = "Done."
 
         # Background session memory extraction
         if should_extract_memory(self._msg_count, self._tool_calls, self._last_extract_at):
