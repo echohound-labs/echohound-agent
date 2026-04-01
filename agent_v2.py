@@ -225,6 +225,12 @@ def _build_system_prompt(user_id: int, user_name: str = None, chat_id: int = 0) 
         "Save CONFIRMATIONS too, not just corrections. "
         "Or tag inline: [SAVE_MEMORY type=feedback]content[/SAVE_MEMORY]"
     )
+    parts.append(
+        "\nOUTPUT FORMAT — STRICT:\n"
+        "You are replying in Telegram. Use plain conversational text only.\n"
+        "NEVER use: ** bold **, # headers, --- dividers, or markdown tables.\n"
+        "Short paragraphs. No bullet walls. Get to the point fast."
+    )
 
     return "\n".join(parts)
 
@@ -327,6 +333,7 @@ class EchoHound:
             if not tool_calls:
                 final = " ".join(text_parts).strip()
                 break
+            iteration += 1
 
             tool_results = []
             for tc in tool_calls:
@@ -343,6 +350,9 @@ class EchoHound:
                     "content": json.dumps(result) if isinstance(result, dict) else str(result),
                 })
             messages.append({"role": "user", "content": tool_results})
+            iteration += 1
+        else:
+            final = "I got stuck in a loop. Please try again."
 
         self.messages       = messages
         self._msg_count    += 1
