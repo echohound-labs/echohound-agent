@@ -19,7 +19,10 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 
 MEMORY_DIR = Path(__file__).parent / "users"
-COMMUNITY_MEMORY = Path(__file__).parent / "community.md"
+COMMUNITY_MEMORY_DIR = Path(__file__).parent
+
+def _community_path(chat_id: int = 0) -> Path:
+    return COMMUNITY_MEMORY_DIR / f"community_{chat_id}.md"
 USER_META_FILE = Path(__file__).parent / "user_meta.json"
 
 MAX_USER_CHARS = 6000  # Per-user memory limit
@@ -55,11 +58,12 @@ def get_user_memory(user_id: int) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def get_community_memory() -> str:
-    """Read shared community memory."""
-    if not COMMUNITY_MEMORY.exists():
+def get_community_memory(chat_id: int = 0) -> str:
+    """Read shared community memory for a specific chat."""
+    p = _community_path(chat_id)
+    if not p.exists():
         return ""
-    return COMMUNITY_MEMORY.read_text(encoding="utf-8")
+    return p.read_text(encoding="utf-8")
 
 
 def write_user_memory(user_id: int, entry: str, user_name: Optional[str] = None):
@@ -100,7 +104,7 @@ def write_user_memory(user_id: int, entry: str, user_name: Optional[str] = None)
     _save_user_meta(meta)
 
 
-def write_community_memory(entry: str):
+def write_community_memory(entry: str, chat_id: int = 0):
     """
     Append a memory entry to shared community memory.
     Use for facts relevant to the whole group.

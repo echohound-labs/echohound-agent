@@ -22,6 +22,9 @@ from config import TELEGRAM_BOT_TOKEN, AGENT_NAME, ADMIN_USER_IDS
 from utils.spinner import get_stalled_message, STALL_THRESHOLD_SECONDS
 from agent_v2 import EchoHound
 from utils.rate_limiter import RateLimiter, get_user_stats
+from utils.exporter import export_as_json
+from utils.health import start_health_server
+from utils.webhook import parse_args
 
 logging.basicConfig(
     format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
@@ -164,6 +167,20 @@ async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Something went wrong. Try again or /xclear.")
 
 
+async def cmd_export(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    uid  = update.effective_user.id
+    user = update.effective_user
+    try:
+        data = export_as_json(uid, user.username or "")
+        await update.message.reply_document(
+            document=data.encode("utf-8"),
+            filename=f"echohound_memory_{uid}.json",
+            caption="Your EchoHound memory export 🐾",
+        )
+    except Exception as e:
+        await update.message.reply_text(f"Export failed: {e}")
+
+
 async def cmd_cost(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     await update.message.reply_text(
@@ -187,8 +204,10 @@ def main():
     app.add_handler(CommandHandler("xreset",  cmd_reset))
     app.add_handler(CommandHandler("xrate",   cmd_rate))
     app.add_handler(CommandHandler("xcost",   cmd_cost))
+    app.add_handler(CommandHandler("xexport", cmd_export))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
+    start_health_server()
     logger.info(f"🐾 {AGENT_NAME} v2 starting...")
     app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
 
