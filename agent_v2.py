@@ -216,7 +216,7 @@ def _build_system_prompt(user_id: int, user_name: str = None) -> str:
         parts.append(session_ctx)
 
     # Per-user + community typed memories
-    mem_ctx = memory_for_prompt(user_id)
+    mem_ctx = memory_for_prompt(user_id, chat_id=self.chat_id)
     if mem_ctx:
         parts.append(mem_ctx)
 
@@ -276,8 +276,9 @@ class EchoHound:
     One instance per user. Holds conversation + all KAIROS components.
     """
 
-    def __init__(self, user_id: int, user_name: str = "", first_name: str = ""):
+    def __init__(self, user_id: int, user_name: str = "", first_name: str = "", chat_id: int = 0):
         self.user_id   = user_id
+        self.chat_id   = chat_id
         self.user_name = user_name or first_name or str(user_id)
         self.messages: list = []
 

@@ -33,9 +33,11 @@ MEMORY_EXPIRY_DAYS = 30
 MEMORY_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def _get_user_memory_path(user_id: int) -> Path:
+def _get_user_memory_path(user_id: int, chat_id: int = 0) -> Path:
     """Get the memory file path for a specific user."""
-    return MEMORY_DIR / f"{user_id}.md"
+    community_dir = MEMORY_DIR / str(chat_id)
+ community_dir.mkdir(parents=True, exist_ok=True)
+ return community_dir / f"{user_id}.md"
 
 
 def _load_user_meta() -> Dict[str, Any]:
@@ -50,7 +52,7 @@ def _save_user_meta(meta: Dict[str, Any]):
     USER_META_FILE.write_text(json.dumps(meta, indent=2))
 
 
-def get_user_memory(user_id: int) -> str:
+def get_user_memory(user_id: int, chat_id: int = 0) -> str:
     """Read memory for a specific user."""
     path = _get_user_memory_path(user_id)
     if not path.exists():
@@ -66,7 +68,7 @@ def get_community_memory(chat_id: int = 0) -> str:
     return p.read_text(encoding="utf-8")
 
 
-def write_user_memory(user_id: int, entry: str, user_name: Optional[str] = None):
+def write_user_memory(user_id: int, entry: str, user_name: Optional[str] = None, chat_id: int = 0):
     """
     Append a memory entry for a specific user with timestamp.
     Trims oldest entries if file exceeds MAX_USER_CHARS.
@@ -75,14 +77,14 @@ def write_user_memory(user_id: int, entry: str, user_name: Optional[str] = None)
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
     new_entry = f"\n## {timestamp}\n{entry.strip()}\n"
     
-    current = get_user_memory(user_id)
+    current = get_user_memory(user_id, chat_id)
     updated = current + new_entry
     
     # Trim oldest entries if over limit
     if len(updated) > MAX_USER_CHARS:
         updated = _trim_oldest(updated, MAX_USER_CHARS)
     
-    _get_user_memory_path(user_id).write_text(updated, encoding="utf-8")
+    _get_user_memory_path(user_id, chat_id).write_text(updated, encoding="utf-8")
     
     # Update user metadata
     meta = _load_user_meta()

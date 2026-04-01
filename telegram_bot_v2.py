@@ -36,9 +36,9 @@ rate_limiter = RateLimiter()
 _agents: dict[int, EchoHound] = {}
 
 
-def get_agent(uid: int, username: str = "", first_name: str = "") -> EchoHound:
+def get_agent(uid: int, username: str = "", first_name: str = "", chat_id: int = 0) -> EchoHound:
     if uid not in _agents:
-        _agents[uid] = EchoHound(user_id=uid, user_name=username, first_name=first_name)
+        _agents[uid] = EchoHound(user_id=uid, user_name=username, first_name=first_name, chat_id=chat_id)
     return _agents[uid]
 
 
@@ -143,7 +143,7 @@ async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(msg)
         return
 
-    agent = get_agent(uid, user.username or "", user.first_name or "")
+    agent = get_agent(uid, user.username or "", user.first_name or "", chat_id=chat_id)
     await ctx.bot.send_chat_action(chat_id, "typing")
 
     response_done = False
