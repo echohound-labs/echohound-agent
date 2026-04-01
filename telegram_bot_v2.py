@@ -1,5 +1,7 @@
 from dotenv import load_dotenv
 load_dotenv()
+import base64
+from utils.file_reader import extract_text
 """
 EchoHound v2 — Telegram Bot
 """
@@ -25,6 +27,12 @@ logging.basicConfig(
     level=logging.INFO,
 )
 logger = logging.getLogger("echohound.v2")
+
+AVAILABLE_MODELS = {
+    "sonnet": "claude-sonnet-4-6",
+    "haiku":  "claude-haiku-4-5-20251001",
+    "opus":   "claude-opus-4-6",
+}
 
 rate_limiter = RateLimiter()
 _agents: dict[int, EchoHound] = {}
@@ -82,6 +90,9 @@ async def cmd_clear(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_reset(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
+    if uid not in ADMIN_USER_IDS:
+        await update.message.reply_text("This command is admin only.")
+        return
     if uid in _agents:
         _agents[uid].reset_memory()
         del _agents[uid]
@@ -194,6 +205,114 @@ async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         typing_task.cancel()
         await update.message.reply_text("Something went wrong. Try again or /xclear.")
 
+
+async def cmd_model(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if uid not in ADMIN_USER_IDS:
+        await update.message.reply_text("⛔ Admin only.")
+        return
+    if not ctx.args:
+        lines = ["*Available models:*"]
+        for alias, full in AVAILABLE_MODELS.items():
+            lines.append(f" `{alias}` → `{full}`")
+        lines.append("\nUsage: `/xmodel <alias>`")
+        await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+        return
+    alias = ctx.args[0].lower()
+    if alias not in AVAILABLE_MODELS:
+        await update.message.reply_text(f"Unknown model `{alias}`. Options: {', '.join(AVAILABLE_MODELS.keys())}", parse_mode="Markdown")
+        return
+    new_model = AVAILABLE_MODELS[alias]
+    for agent in _agents.values():
+        agent._model = new_model
+    await update.message.reply_text(f"✅ Switched to `{new_model}`", parse_mode="Markdown")
+
+
+async def handle_document(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    uid = user.id
+    chat_id = update.effective_chat.id
+    allowed, msg = rate_limiter.check_rate_limit(uid, chat_id, admin_ids=ADMIN_USER_IDS)
+    if not allowed:
+        await update.message.reply_text(msg)
+        return
+    doc = update.message.document
+    filename = doc.file_name or "file"
+    caption = update.message.caption or ""
+    await ctx.bot.send_chat_action(chat_id, "typing")
+    try:
+        file = await ctx.bot.get_file(doc.file_id)
+        file_bytes = await file.download_as_bytearray()
+        text = extract_text(bytes(file_bytes), filename)
+    except Exception as e:
+        await update.message.reply_text(f"Couldn't read that file: {e}")
+        return
+    user_message = f"[Document: {filename}]\n\n{text}" if not caption else f"[Document: {filename}] {caption}\n\n{text}"
+    agent = get_agent(uid, user.username or "", user.first_name or "", chat_id=chat_id)
+    stop_typing = asyncio.Event()
+    typing_task = asyncio.create_task(_keep_typing(ctx.bot, chat_id, stop_typing))
+    try:
+        response = await agent.chat(user_message, confirm_callback=auto_approve)
+        stop_typing.set(); typing_task.cancel()
+        if not response: response = "Done."
+        if len(response) > 4000:
+            for chunk in [response[i:i+4000] for i in range(0, len(response), 4000)]:
+                await update.message.reply_text(chunk)
+        else:
+            await update.message.reply_text(response)
+    except Exception as e:
+        stop_typing.set(); typing_task.cancel()
+        logger.error(f"Document handler error: {e}", exc_info=True)
+        await update.message.reply_text("Something went wrong processing that file.")
+
+
+async def handle_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    uid = user.id
+    chat_id = update.effective_chat.id
+    allowed, msg = rate_limiter.check_rate_limit(uid, chat_id, admin_ids=ADMIN_USER_IDS)
+    if not allowed:
+        await update.message.reply_text(msg)
+        return
+    caption = update.message.caption or "What's in this image?"
+    await ctx.bot.send_chat_action(chat_id, "typing")
+    try:
+        photo = update.message.photo[-1]
+        file = await ctx.bot.get_file(photo.file_id)
+        file_bytes = await file.download_as_bytearray()
+        b64_image = base64.standard_b64encode(bytes(file_bytes)).decode("utf-8")
+    except Exception as e:
+        await update.message.reply_text(f"Couldn't download image: {e}")
+        return
+    agent = get_agent(uid, user.username or "", user.first_name or "", chat_id=chat_id)
+    vision_message = [
+        {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": b64_image}},
+        {"type": "text", "text": caption},
+    ]
+    stop_typing = asyncio.Event()
+    typing_task = asyncio.create_task(_keep_typing(ctx.bot, chat_id, stop_typing))
+    try:
+        agent.messages.append({"role": "user", "content": vision_message})
+        from utils.api_retry import create_with_retry
+        from config import MODEL, MAX_TOKENS
+        from agent_v2 import ALL_TOOL_DEFINITIONS, _build_system_prompt
+        from agent_v2 import client as claude_client
+        response = await create_with_retry(
+            claude_client, model=MODEL, max_tokens=MAX_TOKENS,
+            system=_build_system_prompt(uid, agent.user_name, agent.chat_id),
+            messages=agent.messages,
+        )
+        agent.cost.add(response.usage, MODEL)
+        text = " ".join(b.text for b in response.content if b.type == "text").strip()
+        agent.messages.append({"role": "assistant", "content": response.content})
+        stop_typing.set(); typing_task.cancel()
+        if not text: text = "I can see the image but couldn't generate a response."
+        await update.message.reply_text(text)
+    except Exception as e:
+        stop_typing.set(); typing_task.cancel()
+        logger.error(f"Photo handler error: {e}", exc_info=True)
+        await update.message.reply_text("Couldn't analyse that image.")
+
 async def _post_init(app: Application):
     dream = AutoDream()
     asyncio.create_task(run_dream_scheduler(dream))
@@ -222,6 +341,9 @@ def main():
     app.add_handler(CommandHandler("xrate",   cmd_rate))
     app.add_handler(CommandHandler("xcost",   cmd_cost))
     app.add_handler(CommandHandler("xexport", cmd_export))
+    app.add_handler(CommandHandler("xmodel", cmd_model))
+    app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
+    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     start_health_server()
