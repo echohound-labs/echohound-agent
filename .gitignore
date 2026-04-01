@@ -8,3 +8,6 @@ __pycache__/
 memory/memory.md   # optional: remove this line if you want memory in version control
 memory/sessions/
 memory/users/
+memory/user_meta.json
+memory/users/
+memory/community_*.md

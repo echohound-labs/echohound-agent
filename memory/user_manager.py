@@ -54,7 +54,7 @@ def _save_user_meta(meta: Dict[str, Any]):
 
 def get_user_memory(user_id: int, chat_id: int = 0) -> str:
     """Read memory for a specific user."""
-    path = _get_user_memory_path(user_id)
+    path = _get_user_memory_path(user_id, chat_id)
     if not path.exists():
         return ""
     return path.read_text(encoding="utf-8")
