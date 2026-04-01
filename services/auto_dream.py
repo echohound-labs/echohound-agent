@@ -1,3 +1,4 @@
+import time
 """
 AutoDream — Nightly Memory Consolidation
 Fires after 24h elapsed + 5 new sessions accumulated.
@@ -16,6 +17,24 @@ MIN_HOURS    = 24
 MIN_SESSIONS = 5
 MAX_ENTRY    = 150
 DREAM_LOG    = SESSIONS_DIR / "dream_log.json"
+DREAM_LOCK   = SESSIONS_DIR / ".autodream.lock"
+DREAM_LOCK   = SESSIONS_DIR / ".autodream.lock"
+
+
+
+def _acquire_lock() -> bool:
+    """Prevent concurrent dream runs. Stale locks (>1hr) are cleared."""
+    if DREAM_LOCK.exists():
+        age = time.time() - DREAM_LOCK.stat().st_mtime
+        if age < 3600:
+            return False
+        DREAM_LOCK.unlink()  # stale lock — clear it
+    DREAM_LOCK.touch()
+    return True
+
+def _release_lock():
+    if DREAM_LOCK.exists():
+        DREAM_LOCK.unlink()
 
 
 class AutoDream:
@@ -54,6 +73,9 @@ class AutoDream:
         if not eligible:
             return {"status": "skipped", "reason": reason}
 
+        if not _acquire_lock():
+            return {"status": "skipped", "reason": "another dream is running"}
+
         log      = self._load_log()
         sessions = self._new_sessions(log.get("last_dream"))
         print(f"[AutoDream] Starting — {reason}")
@@ -75,6 +97,8 @@ class AutoDream:
         except Exception as e:
             print(f"[AutoDream] ❌ {e}")
             return {"status": "failed", "error": str(e)}
+        finally:
+            _release_lock()
 
     def _orient(self) -> str:
         p = SESSIONS_DIR / "consolidated_memory.md"

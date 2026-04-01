@@ -1,3 +1,4 @@
+from utils.atomic_write import atomic_write
 """
 EchoHound Session Memory — Inspired by Claude Code Source (March 30, 2026 leak)
 ================================================================================
@@ -116,7 +117,7 @@ def init_session_memory(user_id: int) -> str:
     """Create a session memory file from template if it doesn't exist."""
     path = get_session_memory_path(user_id)
     if not path.exists():
-        path.write_text(SESSION_TEMPLATE, encoding="utf-8")
+        atomic_write(str(path), SESSION_TEMPLATE)
     return path.read_text(encoding="utf-8")
 
 
@@ -131,7 +132,7 @@ def get_session_memory(user_id: int) -> str:
 def clear_session_memory(user_id: int):
     """Reset session memory to fresh template."""
     path = get_session_memory_path(user_id)
-    path.write_text(SESSION_TEMPLATE, encoding="utf-8")
+    atomic_write(str(path), SESSION_TEMPLATE)
 
 
 def save_typed_memory(
@@ -165,7 +166,7 @@ def save_typed_memory(
     if len(updated) > MAX_TOTAL_CHARS:
         updated = _trim_oldest_entries(updated, MAX_TOTAL_CHARS)
     
-    path.write_text(updated, encoding="utf-8")
+    atomic_write(str(path), updated)
     return True
 
 

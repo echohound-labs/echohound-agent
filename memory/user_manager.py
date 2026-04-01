@@ -1,3 +1,4 @@
+from utils.atomic_write import atomic_write
 """
 EchoHound User Memory Manager
 =============================
@@ -113,7 +114,7 @@ def write_community_memory(entry: str):
     if len(updated) > MAX_COMMUNITY_CHARS:
         updated = _trim_oldest(updated, MAX_COMMUNITY_CHARS)
     
-    COMMUNITY_MEMORY.write_text(updated, encoding="utf-8")
+    atomic_write(str(COMMUNITY_MEMORY), updated)
 
 
 def clear_user_memory(user_id: int):
@@ -247,4 +248,4 @@ def cleanup_expired_memories():
         if current_date and current_date >= cutoff:
             filtered.extend(current_section)
         
-        mem_file.write_text("".join(filtered), encoding="utf-8")
+        atomic_write(str(mem_file), "".join(filtered))
