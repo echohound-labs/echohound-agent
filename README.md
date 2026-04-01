@@ -341,14 +341,24 @@ python telegram_bot_v2.py
 ### Change the model
 Edit `config.py`:
 ```python
-MODEL = "claude-haiku-3-5"    # cheapest, fast
-MODEL = "claude-sonnet-4-5"   # default, best balance
-MODEL = "claude-opus-4-5"     # most capable, most expensive
+MODEL = "claude-haiku-4-5-20251001"  # cheapest, fast
+MODEL = "claude-sonnet-4-6"          # default, best balance
+MODEL = "claude-opus-4-6"            # most capable, most expensive
 ```
 
 ---
 
 ## Changelog
+
+### v2.2 — April 2026
+- ✨ Per-group community memory isolation (user × chat scoped)
+- ✨ `/xexport` — export your memory as JSON file
+- ✨ Health endpoint on port 8080 (`/health`)
+- ✨ Webhook mode (`--webhook --domain yourdomain.com`)
+- 🔧 Atomic writes on all memory files (crash-safe)
+- 🔧 AutoDream lock file + stale lock detection
+- 🔧 v1 files moved to `archive/`
+- 🔧 Correct model names in config.py
 
 ### v2.1 — April 2026
 - ✨ API retry with exponential backoff + jitter (`utils/api_retry.py`)
