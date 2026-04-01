@@ -142,6 +142,12 @@ async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not text:
         return
 
+    # Block DMs — group only (admins can DM)
+    if not is_group:
+        if uid not in ADMIN_USER_IDS:
+            await update.message.reply_text("I only work in group chats. Add me to your community! 🐾")
+            return
+
     allowed, msg = rate_limiter.check_rate_limit(uid, chat_id, admin_ids=ADMIN_USER_IDS)
     if not allowed:
         await update.message.reply_text(msg)
