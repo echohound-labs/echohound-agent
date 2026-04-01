@@ -380,7 +380,6 @@ MODEL = "claude-opus-4-5"     # most capable, most expensive
 ## Credits
 
 Built by Skywalker with help from Theo (Claude Sonnet 4.6 via OpenClaw).
-Architecture patterns from the Claude Code source leak — March 31, 2026.
 
 ## License
 

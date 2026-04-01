@@ -17,9 +17,9 @@ MAX_TOKENS = 4096
 #   Sonnet 4.5: $3.00 in / $15.00 out  ← balanced, default
 #   Opus 4:     $15.00 in / $75.00 out ← most capable, expensive
 MODELS = {
-    "fast":    "claude-haiku-3-5",    # ~40x cheaper than sonnet — for simple tasks
-    "default": "claude-sonnet-4-5",   # Best cost/performance balance
-    "pro":     "claude-opus-4-5",     # Max capability, reserved for complex tasks
+    "fast":    "claude-haiku-4-5-20251001",  # cheapest, fast
+    "default": "claude-sonnet-4-6",          # best balance, default
+    "pro":     "claude-opus-4-6",            # most capable, most expensive
 }
 
 # Active model — change this OR set MODEL env var OR use /xmodel command at runtime
