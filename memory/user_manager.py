@@ -36,8 +36,8 @@ MEMORY_DIR.mkdir(parents=True, exist_ok=True)
 def _get_user_memory_path(user_id: int, chat_id: int = 0) -> Path:
     """Get the memory file path for a specific user."""
     community_dir = MEMORY_DIR / str(chat_id)
- community_dir.mkdir(parents=True, exist_ok=True)
- return community_dir / f"{user_id}.md"
+    community_dir.mkdir(parents=True, exist_ok=True)
+    return community_dir / f"{user_id}.md"
 
 
 def _load_user_meta() -> Dict[str, Any]:
