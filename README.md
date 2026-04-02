@@ -26,6 +26,9 @@ Sharp, direct, community-first AI agent — powered by Claude. Built for Telegra
 | 🔁 API retry | Exponential backoff + jitter on 429/529 errors |
 | 💸 Cost tracking | USD cost + token breakdown per session |
 | 🎭 Spinner verbs | 187 personality verbs while thinking |
+| 📄 Document handler | PDF, DOCX, TXT, CSV, JSON, PY and more |
+| 🖼️ Image vision | Send photos — Claude analyses them |
+| 🔀 Runtime model switch | `/xmodel` — swap models without restart |
 | 💬 Telegram bot | Mention-aware, /x command prefix |
 
 ---
@@ -60,6 +63,7 @@ echohound-agent/
 │
 └── utils/
     ├── rate_limiter.py      ← tier-based rate limiting
+    ├── file_reader.py       ← document text extraction (PDF, DOCX, TXT...)
     ├── api_retry.py         ← exponential backoff + jitter (429/529)
     ├── cost_tracker.py      ← USD cost + token tracking per session
     ├── spinner.py           ← 187 personality verbs + stall animation
@@ -158,6 +162,8 @@ All commands use `/x` prefix to avoid collisions with other bots.
 | `/xclear` | Clear conversation history (keeps long-term memory) |
 | `/xreset` | Wipe all your memory entirely |
 | `/xrate` | Check your rate limit status and tier |
+| `/xexport` | Export your memory as a JSON file |
+| `/xmodel` | Switch model at runtime — admin only |
 
 In groups, mention `@yourbotname` or reply to a bot message to trigger a response.
 
@@ -349,6 +355,15 @@ MODEL = "claude-opus-4-6"            # most capable, most expensive
 ---
 
 ## Changelog
+
+### v2.3 — April 2026
+- ✨ Document handler — PDF, DOCX, TXT, CSV, JSON, PY and more (`utils/file_reader.py`)
+- ✨ Photo/image handler — Claude vision, caption becomes your question
+- ✨ `/xmodel` command — switch between sonnet/haiku/opus at runtime (admin only)
+- ✨ Swarm workers now have web_search + web_fetch + read_file tool access
+- 🔧 5 bugs fixed — community memory crash, clear_user_memory chat_id, rglob cleanup, AutoCompact model map, AutoDream startup
+- 🔧 Typing indicator now loops every 4s (stays alive for long responses)
+- 🔧 `/xreset` restricted to admin only
 
 ### v2.2 — April 2026
 - ✨ Per-group community memory isolation (user × chat scoped)
