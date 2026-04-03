@@ -68,8 +68,6 @@ async def create_with_retry(
         try:
             response = await asyncio.to_thread(client.messages.create, **kwargs)
             return response
-        except anthropic.APIUserAbortError:
-            raise
         except Exception as error:
             last_error = error
 

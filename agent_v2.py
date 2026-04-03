@@ -309,6 +309,10 @@ class EchoHound:
         messages = self.messages + [{"role": "user", "content": text}]
         system   = _build_system_prompt(self.user_id, self.user_name, self.chat_id)
 
+        # Trim to last 20 messages to prevent token bloat
+        if len(messages) > 20:
+            messages = messages[-20:]
+
         if self.autocompact.should_compact(messages, system):
             messages, _ = await self.autocompact.compact(messages, system)
 
