@@ -21,6 +21,7 @@ from utils.exporter import export_as_json
 from utils.health import start_health_server
 from utils.webhook import parse_args
 from services.auto_dream import AutoDream, run_dream_scheduler
+from services.conv_archive import ConvArchive
 
 logging.basicConfig(
     format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
@@ -35,6 +36,7 @@ AVAILABLE_MODELS = {
 }
 
 rate_limiter = RateLimiter()
+_archive = ConvArchive()
 _agents: dict[int, EchoHound] = {}
 
 def get_agent(uid: int, username: str = "", first_name: str = "", chat_id: int = 0) -> EchoHound:
@@ -172,6 +174,7 @@ async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
 
     agent = get_agent(uid, user.username or "", user.first_name or "", chat_id=chat_id)
+    _archive.write_message("user", user.username or user.first_name or str(uid), text, chat_id=chat_id)
 
     stop_typing = asyncio.Event()
     typing_task = asyncio.create_task(_keep_typing(ctx.bot, chat_id, stop_typing))
@@ -193,6 +196,7 @@ async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
         if not response:
             response = "Done."
+        _archive.write_message("assistant", "EchoHound", response, chat_id=chat_id)
 
         if len(response) > 4000:
             for chunk in [response[i:i+4000] for i in range(0, len(response), 4000)]:

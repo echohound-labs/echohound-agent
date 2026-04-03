@@ -57,6 +57,7 @@ from tools.web_search import web_search
 from tools.web_fetch import web_fetch
 from tools.file_ops import file_read, file_write, file_list, file_delete
 from tools.exec_tool import exec_command
+from tools.memory_fts import fts_search, FTS_TOOL_DEFINITION
 from tools.x1_price import (
     get_xnt_price, get_token_price, get_xnt_holders, get_gas_stats,
     format_price_response,
@@ -191,7 +192,7 @@ CORE_TOOL_DEFINITIONS = [
     },
 ]
 
-ALL_TOOL_DEFINITIONS = CORE_TOOL_DEFINITIONS + TODO_TOOL_DEFINITIONS + X1_TOOL_DEFINITIONS
+ALL_TOOL_DEFINITIONS = CORE_TOOL_DEFINITIONS + TODO_TOOL_DEFINITIONS + X1_TOOL_DEFINITIONS + [FTS_TOOL_DEFINITION]
 
 TOOL_MAP = {
     "web_search":   lambda a: web_search(a.get("query"), a.get("count", 5), a.get("country", "US")),
@@ -200,6 +201,7 @@ TOOL_MAP = {
     "file_write":   lambda a: file_write(a.get("path"), a.get("content"), a.get("overwrite", True)),
     "file_list":    lambda a: file_list(a.get("path", "."), a.get("pattern", "*")),
     "exec_command": lambda a: exec_command(a.get("command"), a.get("timeout", 30)),
+    "memory_fts_search": lambda a: fts_search(a.get("query"), a.get("limit", 8), a.get("sender"), a.get("since_days")),
     **X1_TOOL_MAP,
 }
 
