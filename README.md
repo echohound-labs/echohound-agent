@@ -29,6 +29,7 @@ Sharp, direct, community-first AI agent — powered by Claude. Built for Telegra
 | 📄 Document handler | PDF, DOCX, TXT, CSV, JSON, PY and more |
 | 🖼️ Image vision | Send photos — Claude analyses them |
 | 🔀 Runtime model switch | `/xmodel` — swap models without restart |
+| 🗄️ Conv archive | SQLite FTS5 — every message indexed, BM25 search in 26ms |
 | 💬 Telegram bot | Mention-aware, /x command prefix |
 
 ---
@@ -56,6 +57,7 @@ echohound-agent/
 │   └── x1_price.py         ← XNT price, any token, holders, gas
 │
 ├── services/
+│   ├── conv_archive.py      ← SQLite WAL + FTS5 triggers, indexes every message
 │   ├── auto_dream.py        ← nightly consolidation (4-phase)
 │   ├── auto_compact.py      ← context window management
 │   ├── swarm.py             ← parallel subagent coordinator
@@ -64,6 +66,7 @@ echohound-agent/
 └── utils/
     ├── rate_limiter.py      ← tier-based rate limiting
     ├── file_reader.py       ← document text extraction (PDF, DOCX, TXT...)
+    └── memory_fts.py        ← FTS5 BM25 search tool for Claude
     ├── api_retry.py         ← exponential backoff + jitter (429/529)
     ├── cost_tracker.py      ← USD cost + token tracking per session
     ├── spinner.py           ← 187 personality verbs + stall animation
@@ -355,6 +358,13 @@ MODEL = "claude-opus-4-6"            # most capable, most expensive
 ---
 
 ## Changelog
+
+### v2.4 — April 2026
+- ✨ Conv archive — every message indexed to SQLite FTS5 automatically
+- ✨ `memory_fts_search` tool — Claude can search full conversation history in 26ms
+- ✨ BM25 ranking — most relevant results surface first
+- ✨ Zero cost, zero external deps — pure Python stdlib sqlite3
+- 📝 Inspired by OpenClaw conv-archive FTS5 system
 
 ### v2.3 — April 2026
 - ✨ Document handler — PDF, DOCX, TXT, CSV, JSON, PY and more (`utils/file_reader.py`)
