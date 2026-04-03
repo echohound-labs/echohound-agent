@@ -385,11 +385,17 @@ class EchoHound:
         """Background subagent: update KAIROS session template. Never blocks response."""
         try:
             prompt = get_memory_update_prompt(self.user_id, str(self.user_id))
+            # Only use text messages — strip tool_use/tool_result blocks
+            clean_msgs = [
+                {"role": m["role"], "content": m["content"]}
+                for m in self.messages[-20:]
+                if isinstance(m.get("content"), str)
+            ]
             resp = await asyncio.to_thread(
                 client.messages.create,
                 model=MODEL,
                 max_tokens=2000,
-                messages=[*self.messages[-20:], {"role": "user", "content": prompt}]
+                messages=[*clean_msgs, {"role": "user", "content": prompt}]
             )
             _process_inline_tags(resp.content[0].text, self.user_id)
         except Exception as e:
